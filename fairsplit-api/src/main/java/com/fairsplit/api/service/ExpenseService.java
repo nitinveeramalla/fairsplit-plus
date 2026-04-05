@@ -1,5 +1,6 @@
 package com.fairsplit.api.service;
 
+import com.fairsplit.api.dto.ParseExpenseResponse;
 import com.fairsplit.core.entity.Expense;
 import com.fairsplit.core.entity.ExpenseSplit;
 import com.fairsplit.core.entity.Group;
@@ -8,6 +9,7 @@ import com.fairsplit.core.entity.User;
 import com.fairsplit.core.repository.ExpenseRepository;
 import com.fairsplit.core.repository.GroupRepository;
 import com.fairsplit.core.repository.UserRepository;
+import com.fairsplit.integrations.ai.ExpenseParserService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -24,10 +26,13 @@ public class ExpenseService {
 
     private final UserRepository userRepository;
 
-    public ExpenseService(GroupRepository groupRepository, ExpenseRepository expenseRepository, UserRepository userRepository) {
+    private final ExpenseParserService expenseParserService;
+
+    public ExpenseService(GroupRepository groupRepository, ExpenseRepository expenseRepository, UserRepository userRepository, ExpenseParserService expenseParserService) {
         this.groupRepository = groupRepository;
         this.expenseRepository = expenseRepository;
         this.userRepository = userRepository;
+        this.expenseParserService = expenseParserService;
     }
 
     public Expense createExpense(UUID groupId, UUID paidById, BigDecimal amount, String description, String currency) {
@@ -67,5 +72,25 @@ public class ExpenseService {
 
     public List<Expense> getExpensesForGroup(UUID groupId) {
         return expenseRepository.findByGroupId(groupId);
+    }
+
+    public ParseExpenseResponse parseExpense(String input, UUID groupId, UUID userId) {
+        // 1. Look up the user's display name for the payer context
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        // 2. Call the AI parser
+        ExpenseParserService.ExpenseParseResult result = expenseParserService.parse(input, user.getDisplayName());
+
+        // 3. If HIGH confidence and no clarification needed — auto-create the expense
+        if ("HIGH".equals(result.confidence()) && !result.needsClarification() && result.amount() != null) {
+            Expense expense = createExpense(groupId, userId, result.amount(),
+                    result.description(),
+                    result.currency() != null ? result.currency() : "USD");
+            return new ParseExpenseResponse(result, groupId, true, expense.getId());
+        }
+
+        // 4. Otherwise return the parsed result for user confirmation
+        return new ParseExpenseResponse(result, groupId, false, null);
     }
 }

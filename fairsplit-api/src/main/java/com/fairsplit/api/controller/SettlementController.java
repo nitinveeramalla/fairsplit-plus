@@ -3,6 +3,7 @@ package com.fairsplit.api.controller;
 import com.fairsplit.api.dto.DebtResponse;
 import com.fairsplit.api.dto.RecordSettlementRequest;
 import com.fairsplit.api.service.SettlementService;
+import com.fairsplit.api.utils.UserUtils;
 import com.fairsplit.core.entity.Settlement;
 import com.fairsplit.core.entity.User;
 import com.fairsplit.core.repository.UserRepository;
@@ -25,11 +26,11 @@ public class SettlementController {
 
     private final SettlementService settlementService;
 
-    private final UserRepository userRepository;
+    private final UserUtils userUtils;
 
-    public SettlementController(SettlementService settlementService, UserRepository userRepository) {
+    public SettlementController(SettlementService settlementService,  UserUtils userUtils) {
         this.settlementService = settlementService;
-        this.userRepository = userRepository;
+        this.userUtils = userUtils;
     }
 
     @GetMapping("/group/{groupId}/balances")
@@ -49,9 +50,7 @@ public class SettlementController {
     @PostMapping
     public ResponseEntity<Settlement> recordSettlement(@RequestBody RecordSettlementRequest request,
                                                     @AuthenticationPrincipal UserDetails userDetails) {
-        String email = userDetails.getUsername();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = userUtils.getUser(userDetails);
         Settlement settlement = settlementService.recordSettlement(
                 request.groupId(), user.getId(), request.paidToId(),
                 request.amount(), request.note());

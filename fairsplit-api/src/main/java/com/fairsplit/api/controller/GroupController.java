@@ -3,6 +3,7 @@ package com.fairsplit.api.controller;
 import com.fairsplit.api.dto.AddMemberRequest;
 import com.fairsplit.api.dto.CreateGroupRequest;
 import com.fairsplit.api.service.GroupService;
+import com.fairsplit.api.utils.UserUtils;
 import com.fairsplit.core.entity.Group;
 import com.fairsplit.core.entity.User;
 import com.fairsplit.core.repository.UserRepository;
@@ -25,20 +26,18 @@ public class GroupController {
 
     private final GroupService groupService;
 
-    private final UserRepository userRepository;
+    private final UserUtils userUtils;
 
-    public GroupController(GroupService groupService, UserRepository userRepository) {
+    public GroupController(GroupService groupService, UserUtils userUtils) {
         this.groupService = groupService;
-        this.userRepository = userRepository;
+        this.userUtils = userUtils;
     }
 
 
     @PostMapping
     public ResponseEntity<Group> createGroup(@RequestBody CreateGroupRequest request,
                                              @AuthenticationPrincipal UserDetails userDetails) {
-        String email = userDetails.getUsername();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = userUtils.getUser(userDetails);
         Group newGroup = groupService.createGroup(request.name(), user.getId());
         return ResponseEntity.ok(newGroup);
     }
@@ -52,9 +51,7 @@ public class GroupController {
 
     @GetMapping
     public ResponseEntity<List<Group>> getGroupsForUser(@AuthenticationPrincipal UserDetails userDetails) {
-        String email = userDetails.getUsername();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = userUtils.getUser(userDetails);
         List<Group> groups = groupService.getGroupsForUser(user.getId());
         return ResponseEntity.ok(groups);
     }

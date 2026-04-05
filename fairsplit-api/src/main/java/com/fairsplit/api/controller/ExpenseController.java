@@ -1,9 +1,11 @@
 package com.fairsplit.api.controller;
 
 import com.fairsplit.api.dto.CreateExpenseRequest;
+import com.fairsplit.api.dto.ParseExpenseRequest;
+import com.fairsplit.api.dto.ParseExpenseResponse;
 import com.fairsplit.api.service.ExpenseService;
+import com.fairsplit.api.utils.UserUtils;
 import com.fairsplit.core.entity.Expense;
-import com.fairsplit.core.entity.Group;
 import com.fairsplit.core.entity.User;
 import com.fairsplit.core.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
@@ -25,19 +27,18 @@ public class ExpenseController {
 
     private final ExpenseService expenseService;
 
-    private final UserRepository userRepository;
 
-    public ExpenseController(ExpenseService expenseService, UserRepository userRepository) {
+    private final UserUtils userUtils;
+
+    public ExpenseController(ExpenseService expenseService, UserUtils userUtils) {
         this.expenseService = expenseService;
-        this.userRepository = userRepository;
+        this.userUtils = userUtils;
     }
 
     @PostMapping
     public ResponseEntity<Expense> createExpense(@RequestBody CreateExpenseRequest request,
                                                  @AuthenticationPrincipal UserDetails userDetails) {
-        String email = userDetails.getUsername();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = userUtils.getUser(userDetails);
         Expense newExpense = expenseService.createExpense(request.groupId(), user.getId(), request.amount(),
                 request.description(), request.currency());
         return ResponseEntity.status(201).body(newExpense);
@@ -46,5 +47,12 @@ public class ExpenseController {
     @GetMapping("/group/{groupId}")
     public ResponseEntity<List<Expense>> getAllExpenses(@PathVariable UUID groupId) {
         return ResponseEntity.ok(expenseService.getExpensesForGroup(groupId));
+    }
+
+    @PostMapping("/parse")
+    public ResponseEntity<ParseExpenseResponse> parseExpense(@RequestBody ParseExpenseRequest request,
+                                                             @AuthenticationPrincipal UserDetails userDetails) {
+        User user = userUtils.getUser(userDetails);
+        return ResponseEntity.ok(expenseService.parseExpense(request.input(), request.groupId(), user.getId()));
     }
 }
