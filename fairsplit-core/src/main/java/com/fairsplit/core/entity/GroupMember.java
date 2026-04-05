@@ -1,5 +1,6 @@
 package com.fairsplit.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.OffsetDateTime;
@@ -15,6 +16,7 @@ public class GroupMember {
     @Id
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "group_id", nullable = false)
+    @JsonBackReference
     private Group group;
 
     @Id

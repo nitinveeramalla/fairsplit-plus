@@ -1,5 +1,6 @@
 package com.fairsplit.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -28,6 +29,7 @@ public class User {
     private String avatarUrl;
 
     @Column(name = "password_hash")
+    @JsonIgnore
     private String passwordHash;
 
     @Enumerated(EnumType.STRING)

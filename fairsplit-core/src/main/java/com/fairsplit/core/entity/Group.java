@@ -1,5 +1,6 @@
 package com.fairsplit.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -36,6 +37,7 @@ public class Group {
 
     @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
+    @JsonManagedReference
     private List<GroupMember> members = new ArrayList<>();
 
     @Column(name = "is_archived", nullable = false)
