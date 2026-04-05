@@ -1,5 +1,6 @@
 package com.fairsplit.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -67,6 +68,7 @@ public class Expense {
 
     @OneToMany(mappedBy = "expense", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
+    @JsonManagedReference
     private List<ExpenseSplit> splits = new ArrayList<>();
 
     @Column(name = "is_deleted", nullable = false)

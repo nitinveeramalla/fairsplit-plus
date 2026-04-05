@@ -1,5 +1,6 @@
 package com.fairsplit.core.entity;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -18,6 +19,7 @@ public class ExpenseSplit {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "expense_id", nullable = false)
+    @JsonBackReference
     private Expense expense;
 
     @ManyToOne(fetch = FetchType.LAZY)
