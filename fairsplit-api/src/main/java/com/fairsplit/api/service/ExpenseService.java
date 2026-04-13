@@ -1,5 +1,6 @@
 package com.fairsplit.api.service;
 
+import com.fairsplit.api.dto.CreateExpenseRequest;
 import com.fairsplit.api.dto.ParseExpenseResponse;
 import com.fairsplit.core.entity.Expense;
 import com.fairsplit.core.entity.ExpenseSplit;
@@ -35,38 +36,73 @@ public class ExpenseService {
         this.expenseParserService = expenseParserService;
     }
 
-    public Expense createExpense(UUID groupId, UUID paidById, BigDecimal amount, String description, String currency) {
-        // 1. Find group and paidBy user
-        Group group = groupRepository.findById(groupId)
+    public Expense createExpense(CreateExpenseRequest request, UUID paidById) {
+        Group group = groupRepository.findById(request.groupId())
                 .orElseThrow(() -> new RuntimeException("Group not found"));
         User paidBy = userRepository.findById(paidById)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // 2. Calculate equal split amount
-        BigDecimal splitAmount = amount.divide(
-                BigDecimal.valueOf(group.getMembers().size()), 2, RoundingMode.HALF_UP);
-
-        // 3. Build the expense
         Expense expense = Expense.builder()
                 .group(group)
                 .paidBy(paidBy)
                 .createdBy(paidBy)
-                .amount(amount)
-                .description(description)
-                .currency(currency)
+                .amount(request.amount())
+                .description(request.description())
+                .currency(request.currency() != null ? request.currency() : "USD")
+                .splitType(Expense.SplitType.valueOf(request.splitType()))
                 .build();
 
-        // 4. Create a split for each member
-        for (GroupMember member : group.getMembers()) {
-            ExpenseSplit split = ExpenseSplit.builder()
-                    .expense(expense)
-                    .user(member.getUser())
-                    .owedAmount(splitAmount)
-                    .build();
-            expense.getSplits().add(split);
+        String splitType = request.splitType() == null ? "EQUAL" : request.splitType();
+
+        if (splitType.equals("EQUAL")) {
+            BigDecimal splitAmount = request.amount().divide(
+                    BigDecimal.valueOf(group.getMembers().size()), 2, RoundingMode.HALF_UP);
+            for (GroupMember member : group.getMembers()) {
+                expense.getSplits().add(ExpenseSplit.builder()
+                        .expense(expense)
+                        .user(member.getUser())
+                        .owedAmount(splitAmount)
+                        .build());
+            }
+        } else if (splitType.equals("EXACT")) {
+            BigDecimal sum = request.splits().stream()
+                    .map(CreateExpenseRequest.SplitEntry::value)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (sum.compareTo(request.amount()) != 0) {
+                throw new RuntimeException("Exact split amounts must sum to total amount");
+            }
+            for (CreateExpenseRequest.SplitEntry entry : request.splits()) {
+                User user = userRepository.findById(entry.userId())
+                        .orElseThrow(() -> new RuntimeException("User not found: " + entry.userId()));
+                expense.getSplits().add(ExpenseSplit.builder()
+                        .expense(expense)
+                        .user(user)
+                        .owedAmount(entry.value())
+                        .build());
+            }
+        } else if (splitType.equals("PERCENTAGE")) {
+            BigDecimal sum = request.splits().stream()
+                    .map(CreateExpenseRequest.SplitEntry::value)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (sum.compareTo(BigDecimal.valueOf(100)) != 0) {
+                throw new RuntimeException("Percentages must sum to 100");
+            }
+            for (CreateExpenseRequest.SplitEntry entry : request.splits()) {
+                User user = userRepository.findById(entry.userId())
+                        .orElseThrow(() -> new RuntimeException("User not found: " + entry.userId()));
+                BigDecimal owedAmount = request.amount()
+                        .multiply(entry.value())
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                expense.getSplits().add(ExpenseSplit.builder()
+                        .expense(expense)
+                        .user(user)
+                        .owedAmount(owedAmount)
+                        .build());
+            }
+        } else {
+            throw new RuntimeException("Unsupported split type: " + splitType);
         }
 
-        // 5. Save and return
         return expenseRepository.save(expense);
     }
 
@@ -84,13 +120,15 @@ public class ExpenseService {
 
         // 3. If HIGH confidence and no clarification needed — auto-create the expense
         if ("HIGH".equals(result.confidence()) && !result.needsClarification() && result.amount() != null) {
-            Expense expense = createExpense(groupId, userId, result.amount(),
-                    result.description(),
-                    result.currency() != null ? result.currency() : "USD");
+            CreateExpenseRequest parseRequest = new CreateExpenseRequest(
+                    groupId, result.amount(), result.description(),
+                    result.currency() != null ? result.currency() : "USD",
+                    "EQUAL", List.of());
+            Expense expense = createExpense(parseRequest, userId);
             return new ParseExpenseResponse(result, groupId, true, expense.getId());
         }
 
-        // 4. Otherwise return the parsed result for user confirmation
+        // 4. Otherwise, return the parsed result for user confirmation
         return new ParseExpenseResponse(result, groupId, false, null);
     }
 }
