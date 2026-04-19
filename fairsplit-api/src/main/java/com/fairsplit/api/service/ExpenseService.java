@@ -42,6 +42,8 @@ public class ExpenseService {
         User paidBy = userRepository.findById(paidById)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        String splitType = request.splitType() == null ? "EQUAL" : request.splitType();
+
         Expense expense = Expense.builder()
                 .group(group)
                 .paidBy(paidBy)
@@ -49,10 +51,9 @@ public class ExpenseService {
                 .amount(request.amount())
                 .description(request.description())
                 .currency(request.currency() != null ? request.currency() : "USD")
-                .splitType(Expense.SplitType.valueOf(request.splitType()))
+                .splitType(Expense.SplitType.valueOf(splitType))
                 .build();
 
-        String splitType = request.splitType() == null ? "EQUAL" : request.splitType();
 
         if (splitType.equals("EQUAL")) {
             BigDecimal splitAmount = request.amount().divide(
