@@ -23,6 +23,8 @@ A production-grade expense splitting backend built with Java 21 and Spring Boot 
 
 ---
 
+# 🚀 Live API: https://fair-split-plus-production.up.railway.app
+
 ## Project Overview
 
 FairSplit+ allows users to create groups, log shared expenses, automatically split costs between members, and settle debts with minimal transactions using a greedy debt simplification algorithm. An AI layer powered by Claude allows users to log expenses in plain English.
