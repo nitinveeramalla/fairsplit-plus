@@ -1,2 +1,1 @@
 ALTER TABLE expenses ALTER COLUMN currency TYPE VARCHAR(3);
-ALTER TABLE settlements ALTER COLUMN currency TYPE VARCHAR(3);
