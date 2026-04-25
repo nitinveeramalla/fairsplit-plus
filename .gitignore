@@ -21,3 +21,5 @@ Thumbs.db
 
 # Logs
 *.log
+fairsplit-frontend/node_modules/
+fairsplit-frontend/dist/
