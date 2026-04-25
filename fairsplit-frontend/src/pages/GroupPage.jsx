@@ -11,6 +11,10 @@ export default function GroupPage() {
   const [loading, setLoading] = useState(true);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [activeTab, setActiveTab] = useState('expenses');
+  const [parseInput, setParseInput] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [parseResult, setParseResult] = useState(null);
+  const [parseError, setParseError] = useState('');
   const [form, setForm] = useState({ description: '', amount: '', currency: 'USD', splitType: 'EQUAL' });
   const [submitting, setSubmitting] = useState(false);
 
@@ -60,6 +64,28 @@ export default function GroupPage() {
 
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>;
 
+const parseExpense = async (e) => {
+  e.preventDefault();
+  setParsing(true);
+  setParseResult(null);
+  setParseError('');
+  try {
+    const res = await client.post('/api/expenses/parse', {
+      input: parseInput,
+      groupId
+    });
+    setParseResult(res.data);
+    if (res.data.autoCreated) {
+      setParseInput('');
+      fetchAll();
+    }
+  } catch (err) {
+    setParseError('Failed to parse expense');
+  } finally {
+    setParsing(false);
+  }
+};
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
@@ -69,7 +95,7 @@ export default function GroupPage() {
 
       <div className="max-w-2xl mx-auto px-6 py-8">
         <div className="flex gap-6 mb-6 border-b border-gray-200">
-          {['expenses', 'balances'].map(tab => (
+          {['expenses', 'balances', 'ai parse'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -140,6 +166,57 @@ export default function GroupPage() {
             )}
           </div>
         )}
+
+    {activeTab === 'ai parse' && (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-500">Type a natural language expense and let AI parse it.</p>
+        <form onSubmit={parseExpense} className="space-y-3">
+          <input
+            type="text"
+            value={parseInput}
+            onChange={e => setParseInput(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder='e.g. "Split $90 dinner with Bob and Carol equally"'
+            required
+          />
+          <button
+            type="submit"
+            disabled={parsing}
+            className="w-full bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+          >
+            {parsing ? 'Parsing...' : 'Parse with AI ✨'}
+          </button>
+        </form>
+
+        {parseError && (
+          <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg text-sm">{parseError}</div>
+        )}
+
+        {parseResult && (
+          <div className="bg-white rounded-xl p-4 border border-gray-200 space-y-2">
+            {parseResult.autoCreated ? (
+              <div className="flex items-center gap-2 text-green-600 text-sm font-medium">
+                <span>✓</span>
+                <span>Expense created automatically!</span>
+              </div>
+            ) : (
+              <div className="text-sm text-yellow-600 font-medium">⚠ Review before confirming</div>
+            )}
+            {parseResult.parsed && (
+              <div className="text-sm text-gray-600 space-y-1 mt-2">
+                {parseResult.parsed.description && <p><span className="text-gray-400">Description:</span> {parseResult.parsed.description}</p>}
+                {parseResult.parsed.amount && <p><span className="text-gray-400">Amount:</span> ${parseResult.parsed.amount}</p>}
+                {parseResult.parsed.splitType && <p><span className="text-gray-400">Split:</span> {parseResult.parsed.splitType}</p>}
+                {parseResult.parsed.confidence && <p><span className="text-gray-400">Confidence:</span> {parseResult.parsed.confidence}</p>}
+                {parseResult.parsed.clarificationNeeded && (
+                  <p className="text-yellow-600"><span className="text-gray-400">Note:</span> {parseResult.parsed.clarificationNeeded}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )}
       </div>
 
       {showExpenseModal && (
