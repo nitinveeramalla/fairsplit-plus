@@ -3,11 +3,13 @@ package com.fairsplit.api.service;
 import com.fairsplit.core.entity.Group;
 import com.fairsplit.core.entity.Settlement;
 import com.fairsplit.core.entity.User;
+import com.fairsplit.core.entity.ActivityEventType;
 import com.fairsplit.core.repository.ExpenseRepository;
 import com.fairsplit.core.repository.ExpenseSplitRepository;
 import com.fairsplit.core.repository.GroupRepository;
 import com.fairsplit.core.repository.SettlementRepository;
 import com.fairsplit.core.repository.UserRepository;
+import com.fairsplit.core.service.ActivityEventService;
 import com.fairsplit.core.service.DebtSimplificationService;
 import org.springframework.stereotype.Service;
 
@@ -33,16 +35,20 @@ public class SettlementService {
     private final GroupRepository groupRepository;
 
 
+    private final ActivityEventService activityEventService;
+
     public SettlementService(ExpenseRepository expenseRepository, ExpenseSplitRepository expenseSplitRepository,
                              SettlementRepository settlementRepository,
                              DebtSimplificationService debtSimplificationService,
-                             UserRepository userRepository, GroupRepository groupRepository) {
+                             UserRepository userRepository, GroupRepository groupRepository,
+                             ActivityEventService activityEventService) {
         this.expenseRepository = expenseRepository;
         this.expenseSplitRepository = expenseSplitRepository;
         this.settlementRepository = settlementRepository;
         this.debtSimplificationService = debtSimplificationService;
         this.userRepository = userRepository;
         this.groupRepository = groupRepository;
+        this.activityEventService = activityEventService;
     }
 
     public Map<UUID, BigDecimal> calculateBalances(UUID groupId) {
@@ -83,7 +89,16 @@ public class SettlementService {
                 .note(note)
                 .build();
 
-        return settlementRepository.save(settlement);
+        Settlement saved = settlementRepository.save(settlement);
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("amount", saved.getAmount());
+        metadata.put("payerId", paidBy.getId());
+        metadata.put("payerName", paidBy.getDisplayName());
+        metadata.put("payeeName", paidTo.getDisplayName());
+        activityEventService.log(group, paidBy, ActivityEventType.SETTLEMENT_RECORDED, metadata);
+
+        return saved;
     }
 
     public List<Settlement> getSettlementHistory(UUID groupId) {

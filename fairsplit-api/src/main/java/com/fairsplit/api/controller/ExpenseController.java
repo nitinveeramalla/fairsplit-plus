@@ -39,7 +39,8 @@ public class ExpenseController {
     public ResponseEntity<Expense> createExpense(@RequestBody CreateExpenseRequest request,
                                                  @AuthenticationPrincipal UserDetails userDetails) {
         User user = userUtils.getUser(userDetails);
-        Expense newExpense = expenseService.createExpense(request, user.getId());
+        UUID paidById = request.paidById() != null ? request.paidById() : user.getId();
+        Expense newExpense = expenseService.createExpense(request, paidById);
         return ResponseEntity.status(201).body(newExpense);
     }
 

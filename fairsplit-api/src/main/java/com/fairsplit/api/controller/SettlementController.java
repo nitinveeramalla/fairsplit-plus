@@ -28,16 +28,25 @@ public class SettlementController {
 
     private final UserUtils userUtils;
 
-    public SettlementController(SettlementService settlementService,  UserUtils userUtils) {
+    private final UserRepository userRepository;
+
+    public SettlementController(SettlementService settlementService, UserUtils userUtils, UserRepository userRepository) {
         this.settlementService = settlementService;
         this.userUtils = userUtils;
+        this.userRepository = userRepository;
     }
 
     @GetMapping("/group/{groupId}/balances")
     public ResponseEntity<List<DebtResponse>> getAllDebts(@PathVariable UUID groupId) {
         List<DebtResponse> debts = settlementService.getSimplifiedDebts(groupId)
                 .stream()
-                .map(s -> new DebtResponse(s.from(), s.to(), s.amount()))
+                .map(s -> {
+                    String fromName = userRepository.findById(s.from())
+                            .map(User::getDisplayName).orElse(s.from().toString());
+                    String toName = userRepository.findById(s.to())
+                            .map(User::getDisplayName).orElse(s.to().toString());
+                    return new DebtResponse(fromName, toName, s.amount());
+                })
                 .toList();
         return ResponseEntity.ok(debts);
     }

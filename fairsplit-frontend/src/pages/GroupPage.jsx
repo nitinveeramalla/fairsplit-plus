@@ -15,8 +15,16 @@ export default function GroupPage() {
   const [parsing, setParsing] = useState(false);
   const [parseResult, setParseResult] = useState(null);
   const [parseError, setParseError] = useState('');
-  const [form, setForm] = useState({ description: '', amount: '', currency: 'USD', splitType: 'EQUAL' });
+  const [form, setForm] = useState({
+    description: '', amount: '', currency: 'USD',
+    splitType: 'EQUAL', paidById: ''
+  });
   const [submitting, setSubmitting] = useState(false);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [memberEmail, setMemberEmail] = useState('');
+  const [addingMember, setAddingMember] = useState(false);
+  const [memberError, setMemberError] = useState('');
+  const [activity, setActivity] = useState([]);
 
   useEffect(() => {
     fetchAll();
@@ -24,15 +32,17 @@ export default function GroupPage() {
 
   const fetchAll = async () => {
     try {
-      const [groupsRes, expensesRes, balancesRes] = await Promise.all([
+      const [groupsRes, expensesRes, balancesRes, activityRes] = await Promise.all([
         client.get('/api/groups'),
         client.get(`/api/expenses/group/${groupId}`),
-        client.get(`/api/settlements/group/${groupId}/balances`)
+        client.get(`/api/settlements/group/${groupId}/balances`),
+        client.get(`/api/activity/group/${groupId}`)
       ]);
       const g = groupsRes.data.find(g => g.id === groupId);
       setGroup(g);
       setExpenses(expensesRes.data);
       setBalances(balancesRes.data);
+      setActivity(activityRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -40,7 +50,7 @@ export default function GroupPage() {
     }
   };
 
-  const addExpense = async (e) => {
+const addExpense = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     try {
@@ -50,11 +60,12 @@ export default function GroupPage() {
         amount: parseFloat(form.amount),
         currency: form.currency,
         splitType: form.splitType,
-        splits: []
+        splits: [],
+        paidById: form.paidById || null
       });
       setForm({ description: '', amount: '', currency: 'USD', splitType: 'EQUAL' });
-      setShowExpenseModal(false);
-      fetchAll();
+      await fetchAll();        // fetch first
+      setShowExpenseModal(false); // then close modal
     } catch (err) {
       console.error(err);
     } finally {
@@ -86,16 +97,48 @@ const parseExpense = async (e) => {
   }
 };
 
+const addMember = async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (addingMember) return;
+  setAddingMember(true);
+  setMemberError('');
+  try {
+    const userRes = await client.get(`/api/users/search?email=${encodeURIComponent(memberEmail)}`);
+    if (!userRes.data || !userRes.data.id) {
+      setMemberError('User not found');
+      return;
+    }
+    await client.post(`/api/groups/${groupId}/members`, { userId: userRes.data.id });
+    setMemberEmail('');
+    setShowMemberModal(false);
+    fetchAll();
+  } catch (err) {
+    console.error(err.response?.status, err.response?.data);
+    setMemberError('User not found or already a member');
+  } finally {
+    setAddingMember(false);
+  }
+};
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
         <button onClick={() => navigate('/')} className="text-gray-400 hover:text-gray-600 text-sm">← Back</button>
         <h1 className="text-xl font-bold text-gray-900 ml-2">{group?.name}</h1>
+        <div className="ml-auto flex items-center gap-4">
+          <span className="text-sm text-gray-400">{group?.members?.length} member{group?.members?.length !== 1 ? 's' : ''}</span>
+        </div>
+        <button
+          onClick={() => setShowMemberModal(true)}
+          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+        >
+          + Add Member
+        </button>
       </nav>
 
       <div className="max-w-2xl mx-auto px-6 py-8">
         <div className="flex gap-6 mb-6 border-b border-gray-200">
-          {['expenses', 'balances', 'ai parse'].map(tab => (
+          {['expenses', 'balances', 'ai parse', 'activity'].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -217,6 +260,38 @@ const parseExpense = async (e) => {
         )}
       </div>
     )}
+
+    {activeTab === 'activity' && (
+      <div className="space-y-3 mt-2">
+        {activity.length === 0 ? (
+          <div className="text-center py-16">
+            <p className="text-gray-400 text-sm">No activity yet.</p>
+          </div>
+        ) : (
+          activity.map(event => {
+            const meta = JSON.parse(event.metadata || '{}');
+            return (
+              <div key={event.id} className="bg-white rounded-xl p-4 border border-gray-200">
+                <p className="text-sm text-gray-800">
+                  <span className="font-medium">{event.actorName}</span>{' '}
+                  {event.eventType === 'EXPENSE_ADDED' && (
+                    <span>added <span className="font-medium">{meta.expenseDescription}</span> — ${meta.amount}</span>
+                  )}
+                  {event.eventType === 'SETTLEMENT_RECORDED' && (
+                    <span>settled <span className="font-medium">${meta.amount}</span> with {meta.payeeName}</span>
+                  )}
+                  {event.eventType === 'MEMBER_JOINED' && <span>joined the group</span>}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(event.createdAt).toLocaleString()}
+                </p>
+              </div>
+            );
+          })
+        )}
+      </div>
+    )}
+
       </div>
 
       {showExpenseModal && (
@@ -243,15 +318,26 @@ const parseExpense = async (e) => {
                 step="0.01"
                 required
               />
-              <select
-                value={form.splitType}
-                onChange={e => setForm({...form, splitType: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="EQUAL">Equal split</option>
-                <option value="EXACT">Exact amounts</option>
-                <option value="PERCENTAGE">Percentage</option>
-              </select>
+<select
+  value={form.paidById}
+  onChange={e => setForm({...form, paidById: e.target.value})}
+  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+>
+  <option value="">Me (default)</option>
+  {group?.members?.map(m => (
+    <option key={m.user.id} value={m.user.id}>
+      {m.user.displayName}
+    </option>
+  ))}
+</select>
+<select
+  value={form.splitType}
+  onChange={e => setForm({...form, splitType: e.target.value})}
+  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+>
+  <option value="EQUAL">Equal split</option>
+{/*   <option value="EXACT">Exact amounts</option> */}
+</select>
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -272,6 +358,44 @@ const parseExpense = async (e) => {
           </div>
         </div>
       )}
+
+  {showMemberModal && (
+    <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Member</h3>
+        <form onSubmit={addMember} className="space-y-4">
+          <input
+            type="email"
+            value={memberEmail}
+            onChange={e => setMemberEmail(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="member@example.com"
+            required
+            autoFocus
+          />
+          {memberError && (
+            <p className="text-red-500 text-sm">{memberError}</p>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => { setShowMemberModal(false); setMemberError(''); }}
+              className="flex-1 border border-gray-300 text-gray-700 py-2 rounded-lg text-sm font-medium hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={addingMember}
+              className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              {addingMember ? 'Adding...' : 'Add'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )}
     </div>
   );
 }

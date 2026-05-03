@@ -7,15 +7,19 @@ import com.fairsplit.core.entity.ExpenseSplit;
 import com.fairsplit.core.entity.Group;
 import com.fairsplit.core.entity.GroupMember;
 import com.fairsplit.core.entity.User;
+import com.fairsplit.core.entity.ActivityEventType;
 import com.fairsplit.core.repository.ExpenseRepository;
 import com.fairsplit.core.repository.GroupRepository;
 import com.fairsplit.core.repository.UserRepository;
+import com.fairsplit.core.service.ActivityEventService;
 import com.fairsplit.integrations.ai.ExpenseParserService;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -29,11 +33,16 @@ public class ExpenseService {
 
     private final ExpenseParserService expenseParserService;
 
-    public ExpenseService(GroupRepository groupRepository, ExpenseRepository expenseRepository, UserRepository userRepository, ExpenseParserService expenseParserService) {
+    private final ActivityEventService activityEventService;
+
+    public ExpenseService(GroupRepository groupRepository, ExpenseRepository expenseRepository,
+                          UserRepository userRepository, ExpenseParserService expenseParserService,
+                          ActivityEventService activityEventService) {
         this.groupRepository = groupRepository;
         this.expenseRepository = expenseRepository;
         this.userRepository = userRepository;
         this.expenseParserService = expenseParserService;
+        this.activityEventService = activityEventService;
     }
 
     public Expense createExpense(CreateExpenseRequest request, UUID paidById) {
@@ -104,7 +113,15 @@ public class ExpenseService {
             throw new RuntimeException("Unsupported split type: " + splitType);
         }
 
-        return expenseRepository.save(expense);
+        Expense saved = expenseRepository.save(expense);
+
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("expenseDescription", saved.getDescription());
+        metadata.put("amount", saved.getAmount());
+        metadata.put("splitType", saved.getSplitType().name());
+        activityEventService.log(group, paidBy, ActivityEventType.EXPENSE_ADDED, metadata);
+
+        return saved;
     }
 
     public List<Expense> getExpensesForGroup(UUID groupId) {
@@ -124,7 +141,7 @@ public class ExpenseService {
             CreateExpenseRequest parseRequest = new CreateExpenseRequest(
                     groupId, result.amount(), result.description(),
                     result.currency() != null ? result.currency() : "USD",
-                    "EQUAL", List.of());
+                    "EQUAL", List.of(), null);
             Expense expense = createExpense(parseRequest, userId);
             return new ParseExpenseResponse(result, groupId, true, expense.getId());
         }
